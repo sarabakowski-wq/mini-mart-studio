@@ -1,21 +1,18 @@
 import { startRouter } from './router.js'
-import { el, toast } from './ui.js'
+import { toast } from './ui.js'
 import * as db from './db.js'
 import { renderAisles } from './screens/aisles.js'
 import { renderSettings } from './screens/settings.js'
 import { renderSession } from './screens/session.js'
 import { renderBasket } from './screens/basket.js'
-
-const stub = (name) => (root) => {
-  root.append(el('h1', { class: 'title' }, name))
-}
+import { renderReceipt } from './screens/receipt.js'
 
 const screens = {
   aisles: renderAisles,
   settings: renderSettings,
   basket: renderBasket,
   session: renderSession,
-  receipt: stub('Receipt'),
+  receipt: renderReceipt,
 }
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {

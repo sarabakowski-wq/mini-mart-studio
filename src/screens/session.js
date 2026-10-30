@@ -13,7 +13,7 @@ function holdable(node, { onTap, onHoldStart, onHoldEnd }) {
   let holding = false
   const down = (e) => {
     e.preventDefault()
-    node.setPointerCapture?.(e.pointerId)
+    try { node.setPointerCapture?.(e.pointerId) } catch { /* synthetic or ended pointer */ }
     holding = false
     timer = setTimeout(() => { holding = true; onHoldStart() }, HOLD_MS)
   }
