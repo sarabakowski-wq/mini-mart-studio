@@ -1,0 +1,14 @@
+{
+  "name": "Sara's Mini Mart Studio",
+  "short_name": "Mini Mart",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBF7EA",
+  "theme_color": "#FBF7EA",
+  "icons": [
+    { "src": "assets/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
