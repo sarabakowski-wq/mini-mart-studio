@@ -158,3 +158,4 @@ body:has(#app[data-screen="receipt"]) { background: var(--sky); }
 .chip { background: var(--sky); color: var(--white); border-radius: 99px; padding: 5px 12px; font-family: var(--plain); font-size: 13px; }
 .receipt .btn { width: 100%; margin-top: 16px; }
 .hint { text-align: center; font-family: var(--plain); font-size: 13px; color: var(--ink-soft); margin-top: 8px; }
+.screen-mode .strip-thumbs { padding: 4px 0; }

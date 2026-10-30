@@ -2,6 +2,7 @@ import * as db from '../db.js'
 import { el, sheet, promptSheet, relativeTime, toast } from '../ui.js'
 import { storageLevel } from '../logic.js'
 import { go } from '../router.js'
+import { unlockAudio } from '../nudge.js'
 
 const fmtBytes = (b) => (b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`)
 
@@ -44,7 +45,7 @@ export async function renderAisles(root) {
     }
     const picked = await sheet((close) => [
       el('p', { class: 'sheet-msg' }, 'Which aisle are you working on?'),
-      ...aisles.map((a) => el('button', { class: 'aisle-card', onclick: () => close(a.id) },
+      ...aisles.map((a) => el('button', { class: 'aisle-card', onclick: () => { unlockAudio(); close(a.id) } },
         el('span', { class: 'aisle-num' }, `A${a.number}`), el('span', { class: 'aisle-name grow' }, a.name))),
       el('button', { class: 'aisle-card aisle-new', onclick: () => close('new') }, '+ New aisle'),
     ])
