@@ -35,7 +35,7 @@ Mini Mart metaphor throughout:
 
 Palette (from logo sheet): red `#CC2229`, cobalt `#0A4F9E`, sky `#67B1CD`, cream `#FBF7EA`, yellow `#F3C324`. Cream backgrounds, red display headings, cobalt body text, sky checkered strips and borders, yellow for nudges and highlights.
 
-Fonts (from `Sara's Mini Mart/fonts`): **Hello Goops** for display headings, **Talina** for UI text, system font for small/secondary text. Logo: `Logos!!!!/SARAS_MINIMART_LOGO FINALS-02.png` (wordmark) on home; circle logo as the app icon.
+Fonts (from `Sara's Mini Mart/fonts`): **Hello Imperfect Regular** (`fonts/Fonts 2/Hello-Imperfect.otf`) for display headings, **Talina** for UI text, system font for small/secondary text. Logo: `Logos!!!!/SARAS_MINIMART_LOGO FINALS-02.png` (wordmark) on home; circle logo as the app icon.
 
 Reference mockups: `.superpowers/brainstorm/*/content/flow.html` and `session.html`.
 

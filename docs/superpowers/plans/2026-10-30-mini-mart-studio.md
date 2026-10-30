@@ -15,7 +15,7 @@
 - Free: no paid services, no API keys, no backend, no Apple developer account. GitHub Pages on a **public** repo (free Pages needs public; no user data is in the repo).
 - No AI features. No build step: the browser loads `index.html` + `src/**/*.js` directly.
 - Palette tokens: red `#CC2229`, cobalt `#0A4F9E`, sky `#67B1CD`, cream `#FBF7EA`, yellow `#F3C324`.
-- Fonts: Hello Goops (display), Talina (UI), system (small text). Logo wordmark `SARAS_MINIMART_LOGO FINALS-02.png`; app icon from `sarasminimart_logo_in Circle.png`.
+- Fonts: Hello Imperfect Regular (display, `fonts/Fonts 2/Hello-Imperfect.otf`), Talina (UI), system (small text). Logo wordmark `SARAS_MINIMART_LOGO FINALS-02.png`; app icon from `sarasminimart_logo_in Circle.png`.
 - Copy: "Aisle"/"A1…", "▶ Open the store", "■ Close store", "Basket", "🧾 Check out", "Receipt", "✓ Checked out", nudge banners "SNAP IT!" / "SCREENSHOT IT!", tip "⌘⇧4 on the Mac → AirDrop → tap +", button "Save photos + copy caption".
 - Nudge default 10 min, settable 5–30. Banner auto-dismisses after 10 s or on next capture.
 - Export photos: center crop to 4:5, 1080×1350 JPEG, no overlays. Videos unedited, in strip order.
@@ -40,7 +40,7 @@ index.html                 app shell, loads src/main.js
 manifest.webmanifest       name, icons, standalone, theme colors
 sw.js                      offline cache of app files
 styles/brand.css           tokens, @font-face, checkered strip, buttons, cards
-assets/                    fonts (talina.ttf, goops.otf), logo-wordmark.png, icon-192.png, icon-512.png
+assets/                    fonts (talina.ttf, imperfect.otf), logo-wordmark.png, icon-192.png, icon-512.png
 vendor/jszip.min.js        vendored JSZip
 src/main.js                boot: register SW, request persistence, start router
 src/router.js              hash routes → screen render fns
@@ -203,7 +203,7 @@ Proves the riskiest browser APIs on Sara's iPhone **before** building screens on
 
 **Interfaces:**
 - `groupByDay(captures, notes) → Array<{ day: 'YYYY-MM-DD', captures: capture[], notes: note[] }>`: newest day first, items within a day oldest first, local time zone.
-- Screen: red Goops title (aisle name), "TODAY · N items in basket" / `MMM D` day labels, a 3-col grid (▶ badge for video, ★ for starred), notes inline under their day. Tap → full-screen viewer: ★ toggle, note edit (text, and replay audio if present), delete (confirmSheet "Delete this capture?"), video/audio playback. Aisle menu: Rename, Archive, Export (`exportAisle`). Blue "🧾 Check out" → receipt.
+- Screen: red Hello Imperfect title (aisle name), "TODAY · N items in basket" / `MMM D` day labels, a 3-col grid (▶ badge for video, ★ for starred), notes inline under their day. Tap → full-screen viewer: ★ toggle, note edit (text, and replay audio if present), delete (confirmSheet "Delete this capture?"), video/audio playback. Aisle menu: Rename, Archive, Export (`exportAisle`). Blue "🧾 Check out" → receipt.
 - Delete must also call `removeFromOrder` (Task 9) on the remaining starred captures if the deleted one had a `receiptOrder`.
 
 - [ ] **Step 1: Failing test:** captures on Oct 28 and two on Oct 30 + a note on Oct 28 → two groups, `[0].day === '2026-10-30'` with 2 captures in time order, `[1].notes.length === 1`.
@@ -220,7 +220,7 @@ Proves the riskiest browser APIs on Sara's iPhone **before** building screens on
 - `receiptStrip(captures) → capture[]`: starred captures, those with `receiptOrder` first (ascending), then starred-without-order by `createdAt`. Excludes captures with `receiptOrder === -1` (dropped from this post but still starred).
 - `moveInOrder(strip, from, to) → Array<{id, receiptOrder}>` and `removeFromOrder(strip, id) → Array<{id, receiptOrder}>`: return the patches so orders are contiguous `0..n-1`. For `removeFromOrder`, the removed id gets `-1`.
 - `insertSnippet(text, cursor, snippet) → { text, cursor }`: inserts with a single space separator when needed (no double spaces), and the cursor ends after the snippet.
-- Screen per spec §4: receipt card on a sky background, Goops "RECEIPT", "{NAME} · {n} ITEMS", a draggable strip (pointer events, long-press to drag, ✕ to drop), "YOUR NOTES" list (oldest first, voice-only notes show "🎙 voice note"), caption textarea (`saveDraft` debounced 500 ms), snippet chips → `insertSnippet`, and the cobalt "Save photos + copy caption" button.
+- Screen per spec §4: receipt card on a sky background, Hello Imperfect "RECEIPT", "{NAME} · {n} ITEMS", a draggable strip (pointer events, long-press to drag, ✕ to drop), "YOUR NOTES" list (oldest first, voice-only notes show "🎙 voice note"), caption textarea (`saveDraft` debounced 500 ms), snippet chips → `insertSnippet`, and the cobalt "Save photos + copy caption" button.
   - Save: photos → `cropToJpeg`. Imports are cropped the same way. Videos pass through. Name files with `mediaFilename` in strip order → `shareFiles`. Then `copyText(caption)` → toast "Caption copied, paste it in Instagram ✓". Then `confirmSheet('Mark this aisle as checked out ✓?')` → `updateAisle(id,{checkedOut:true})`.
   - Empty strip → the button is disabled with the hint "★ some shots in your basket first".
 
