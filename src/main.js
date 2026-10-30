@@ -4,6 +4,7 @@ import * as db from './db.js'
 import { renderAisles } from './screens/aisles.js'
 import { renderSettings } from './screens/settings.js'
 import { renderSession } from './screens/session.js'
+import { renderBasket } from './screens/basket.js'
 
 const stub = (name) => (root) => {
   root.append(el('h1', { class: 'title' }, name))
@@ -12,7 +13,7 @@ const stub = (name) => (root) => {
 const screens = {
   aisles: renderAisles,
   settings: renderSettings,
-  basket: stub('Basket'),
+  basket: renderBasket,
   session: renderSession,
   receipt: stub('Receipt'),
 }
