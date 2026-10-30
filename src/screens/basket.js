@@ -2,7 +2,8 @@ import * as db from '../db.js'
 import { el, toast, sheet, confirmSheet, promptSheet, urlBag } from '../ui.js'
 import { go } from '../router.js'
 import { groupByDay, receiptStrip, removeFromOrder } from '../logic.js'
-import { exportAisle } from '../exporter.js'
+import { buildBackup } from '../exporter.js'
+import { shareFiles } from '../share.js'
 import { unlockAudio } from '../nudge.js'
 
 const isVideo = (c) => c.kind === 'video' || c.mime?.startsWith('video/')
@@ -154,13 +155,22 @@ export async function renderBasket(root, { aisleId }) {
       if (name) { aisle = await db.updateAisle(aisleId, { name }); title.textContent = name }
     } else if (choice === 'export') {
       toast('Packing your backup…')
+      let file
       try {
-        const result = await exportAisle(aisleId)
-        if (result !== 'cancelled') toast('Backup ready ✓')
+        file = await buildBackup(aisleId)
       } catch (err) {
         console.error(err)
-        toast(`Export failed: ${err.message}`, 'error')
+        return toast(`Export failed: ${err.message}`, 'error')
       }
+      // Share from a fresh tap: iPhone won't open the share sheet after a long wait.
+      await sheet((close) => [
+        el('p', { class: 'sheet-msg' }, `📦 Backup ready (${Math.max(1, Math.round(file.size / 1e6))} MB)`),
+        el('p', { class: 'muted', style: { margin: 0 } }, 'Save it to Files or iCloud Drive.'),
+        el('div', { class: 'sheet-actions' },
+          el('button', { class: 'btn btn-ghost', onclick: () => close() }, 'Later'),
+          el('button', { class: 'btn btn-blue', onclick: async () => { const r = await shareFiles([file]); close(); if (r !== 'cancelled') toast('Backup saved ✓') } }, 'Save backup'),
+        ),
+      ])
     } else if (choice === 'reopen') {
       aisle = await db.updateAisle(aisleId, { checkedOut: false })
     } else if (choice === 'archive') {

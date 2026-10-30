@@ -32,7 +32,7 @@ const APP_FILES = [
 ]
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_FILES)))
+  event.waitUntil(caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_FILES.map((url) => new Request(url, { cache: 'reload' })))))
   self.skipWaiting()
 })
 

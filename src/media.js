@@ -26,6 +26,17 @@ export async function openMic() {
   return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true }, video: false })
 }
 
+// Opening the mic can take a while (and may show a permission prompt). If the finger
+// lifted in the meantime, don't start a recording that nobody is holding.
+export async function startIfStillHeld(prepare, start, isHeld, release) {
+  const resource = await prepare()
+  if (!isHeld()) {
+    release(resource)
+    return null
+  }
+  return start(resource)
+}
+
 export function stopStream(stream) {
   stream?.getTracks().forEach((t) => t.stop())
 }

@@ -24,7 +24,7 @@ export function unlockAudio() {
   const Ctx = window.AudioContext || window.webkitAudioContext
   if (!Ctx) return
   if (!audioCtx) audioCtx = new Ctx()
-  if (audioCtx.state === 'suspended') audioCtx.resume()
+  if (audioCtx.state !== 'running') audioCtx.resume()
   // A silent blip actually unlocks output on iOS.
   const o = audioCtx.createOscillator()
   const g = audioCtx.createGain()
@@ -37,7 +37,7 @@ export function unlockAudio() {
 // Two-note "ding-ding" like a shop door bell.
 export function playChime() {
   if (!audioCtx) return
-  if (audioCtx.state === 'suspended') audioCtx.resume()
+  if (audioCtx.state !== 'running') audioCtx.resume()
   const t0 = audioCtx.currentTime
   ;[[880, 0], [1320, 0.14]].forEach(([freq, offset]) => {
     const o = audioCtx.createOscillator()
@@ -51,6 +51,10 @@ export function playChime() {
     o.start(t0 + offset)
     o.stop(t0 + offset + 0.4)
   })
+}
+
+export function _audioCtxForTests() {
+  return audioCtx
 }
 
 // Returns { reset, stop }.

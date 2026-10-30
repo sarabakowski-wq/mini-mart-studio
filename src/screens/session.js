@@ -2,7 +2,10 @@ import * as db from '../db.js'
 import { el, toast, sheet, showBanner, hideBanner, urlBag } from '../ui.js'
 import { go } from '../router.js'
 import { runNudges, unlockAudio, playChime } from '../nudge.js'
-import { startCamera, openMic, stopStream, grabPhoto, startRecording } from '../media.js'
+import { startCamera, openMic, stopStream, grabPhoto, startRecording, startIfStillHeld } from '../media.js'
+import { shareFiles } from '../share.js'
+import { storageLevel } from '../logic.js'
+import { extFor } from '../exporter.js'
 import { startTranscribe } from '../speech.js'
 
 const HOLD_MS = 300
@@ -48,7 +51,8 @@ export async function renderSession(root, { aisleId }) {
   let mode = aisle.lastMode === 'screen' ? 'screen' : 'hands-on'
   let cameraStream = null
   let micStream = null
-  let recording = null // { rec, kind, stopSpeech? }
+  let recording = null // { rec, kind, stopSpeech?, button }
+  let pressHeld = false // finger currently down on a hold-to-record button
   let wakeLock = null
   let closed = false
 
@@ -80,12 +84,26 @@ export async function renderSession(root, { aisleId }) {
     hideBanner()
   }
 
-  async function save(fn) {
+  // Storage full: the recording isn't lost. Offer to send it to Photos/Files instead.
+  async function rescue(blob, kind) {
+    const file = new File([blob], `mini-mart-${kind}-${Date.now()}.${extFor(blob.type)}`, { type: blob.type })
+    await sheet((close) => [
+      el('p', { class: 'sheet-msg' }, 'Your phone storage is full'),
+      el('p', { class: 'muted', style: { margin: 0 } }, `This ${kind === 'audio' ? 'voice note' : kind} couldn't be saved in Mini Mart. Save it to Photos or Files so it isn't lost, then export and delete an old aisle to free space.`),
+      el('div', { class: 'sheet-actions' },
+        el('button', { class: 'btn btn-ghost', onclick: () => close() }, 'Discard'),
+        el('button', { class: 'btn btn-blue', onclick: async () => { await shareFiles([file]); close() } }, 'Save it'),
+      ),
+    ])
+  }
+
+  async function save(fn, rescueBlob, kind) {
     try {
       return await fn()
     } catch (err) {
       if (err instanceof db.QuotaError) {
-        toast("Couldn't save, your phone storage is full. Export and delete an old aisle.", 'error')
+        if (rescueBlob) rescue(rescueBlob, kind)
+        else toast("Couldn't save, your phone storage is full. Export and delete an old aisle.", 'error')
       } else {
         console.error(err)
         toast(`Couldn't save: ${err.message || err}`, 'error')
@@ -95,26 +113,35 @@ export async function renderSession(root, { aisleId }) {
   }
 
   async function saveCapture(kind, blob) {
-    const cap = await save(() => db.addCapture({ aisleId, kind, blob, mime: blob.type }))
+    const cap = await save(() => db.addCapture({ aisleId, kind, blob, mime: blob.type }), kind === 'video' ? blob : null, kind)
     if (cap) { addThumb(blob, kind); captured() }
+    return Boolean(cap)
   }
 
-  async function ensureMic() {
-    if (micStream?.active) return micStream
-    micStream = await openMic()
-    return micStream
+  // The mic is opened per recording and released right after, so iPhone's
+  // orange mic dot (and quieter chimes) only happen while recording.
+  function releaseMic() {
+    stopStream(micStream)
+    micStream = null
   }
+
+  const holdToRecord = (begin) => ({
+    onHoldStart: () => { pressHeld = true; begin() },
+    onHoldEnd: () => { pressHeld = false; finishRecording() },
+  })
 
   // ---------- voice / text notes ----------
 
   async function startVoiceNote(button) {
     if (recording) return
     try {
-      const mic = await ensureMic()
-      const rec = startRecording(mic.getAudioTracks(), 'audio')
-      const stopSpeech = startTranscribe()
-      recording = { rec, kind: 'audio', stopSpeech, button }
-      button.classList.add('recording')
+      await startIfStillHeld(openMic, (mic) => {
+        micStream = mic
+        const rec = startRecording(mic.getAudioTracks(), 'audio')
+        const stopSpeech = startTranscribe()
+        recording = { rec, kind: 'audio', stopSpeech, button }
+        button.classList.add('recording')
+      }, () => pressHeld && !closed, stopStream)
     } catch (err) {
       micDenied(err)
     }
@@ -127,9 +154,10 @@ export async function renderSession(root, { aisleId }) {
     button?.classList.remove('recording')
     recDot.classList.remove('on')
     const [blob, text] = await Promise.all([rec.stopAndSave(), stopSpeech ? stopSpeech() : Promise.resolve('')])
+    releaseMic()
     if (!blob.size) return toast('Too short, hold a little longer.', 'warn')
     if (kind === 'audio') {
-      const note = await save(() => db.addNote({ aisleId, text, audioBlob: blob, audioMime: blob.type }))
+      const note = await save(() => db.addNote({ aisleId, text, audioBlob: blob, audioMime: blob.type }), blob, 'audio')
       if (note) {
         addThumb(blob, 'audio')
         captured()
@@ -178,6 +206,21 @@ export async function renderSession(root, { aisleId }) {
     )
   }
 
+  // iPhone often ends or mutes the camera while the app is in the background.
+  function reviveCamera() {
+    const track = cameraStream?.getVideoTracks()[0]
+    if (track && track.readyState === 'live' && !track.muted) {
+      video.play().catch(() => {})
+      return
+    }
+    if (!cameraStream) return // never started (denied) or switching modes
+    stopStream(cameraStream)
+    cameraStream = null
+    startCamera(video)
+      .then((s) => { if (closed || mode !== 'hands-on') stopStream(s); else cameraStream = s })
+      .catch((err) => console.warn('camera restart failed', err))
+  }
+
   function handsOn() {
     const camWrap = el('div', { class: 'cam-wrap' }, video, flash, recDot)
     const shutter = el('button', { class: 'shutter', 'aria-label': 'Tap for photo, hold for video' })
@@ -195,19 +238,19 @@ export async function renderSession(root, { aisleId }) {
           toast(err.message, 'warn')
         }
       },
-      onHoldStart: async () => {
+      ...holdToRecord(async () => {
         if (!cameraStream || recording) return
-        let tracks = cameraStream.getVideoTracks()
-        try {
-          tracks = [...tracks, ...(await ensureMic()).getAudioTracks()]
-        } catch { /* no mic: record silent video */ }
-        recording = { rec: startRecording(tracks, 'video'), kind: 'video', button: shutter }
-        shutter.classList.add('recording')
-        recDot.classList.add('on')
-      },
-      onHoldEnd: finishRecording,
+        const openWithMic = () => openMic().catch(() => null) // no mic: record silent video
+        await startIfStillHeld(openWithMic, (mic) => {
+          micStream = mic
+          const tracks = [...cameraStream.getVideoTracks(), ...(mic ? mic.getAudioTracks() : [])]
+          recording = { rec: startRecording(tracks, 'video'), kind: 'video', button: shutter }
+          shutter.classList.add('recording')
+          recDot.classList.add('on')
+        }, () => pressHeld && !closed && Boolean(cameraStream), stopStream)
+      }),
     })
-    holdable(mic, { onTap: textNote, onHoldStart: () => startVoiceNote(mic), onHoldEnd: finishRecording })
+    holdable(mic, { onTap: textNote, ...holdToRecord(() => startVoiceNote(mic)) })
 
     startCamera(video)
       .then((s) => {
@@ -232,11 +275,12 @@ export async function renderSession(root, { aisleId }) {
     picker.addEventListener('change', async () => {
       const files = [...picker.files]
       picker.value = ''
-      for (const f of files) await saveCapture('import', f)
-      if (files.length) toast(`Added ${files.length} to the basket`)
+      let added = 0
+      for (const f of files) if (await saveCapture('import', f)) added++
+      if (added) toast(`Added ${added} to the basket`)
     })
     const noteBtn = el('button', { class: 'btn btn-blue' }, '🎙 Add a note')
-    holdable(noteBtn, { onTap: textNote, onHoldStart: () => startVoiceNote(noteBtn), onHoldEnd: finishRecording })
+    holdable(noteBtn, { onTap: textNote, ...holdToRecord(() => startVoiceNote(noteBtn)) })
 
     return [
       el('div', { class: 'screen-mode' },
@@ -283,7 +327,7 @@ export async function renderSession(root, { aisleId }) {
       if (recording) finishRecording()
     } else if (!closed) {
       keepAwake()
-      if (mode === 'hands-on' && video.srcObject) video.play().catch(() => {})
+      if (mode === 'hands-on') reviveCamera()
     }
   }
   document.addEventListener('visibilitychange', onVisibility)
@@ -309,6 +353,11 @@ export async function renderSession(root, { aisleId }) {
   unlockAudio()
   keepAwake()
   await setMode(mode)
+  navigator.storage?.estimate?.().then((est) => {
+    if (est && storageLevel(est.usage, est.quota) === 'warn') {
+      toast('Storage is almost full. Videos may not save. Export and delete an old aisle.', 'warn')
+    }
+  }).catch(() => {})
 
   return async function cleanup() {
     closed = true

@@ -24,6 +24,7 @@ describe('aisles', () => {
     const b = await db.createAisle('B')
     const c = await db.createAisle('C')
     await db.updateAisle(c.id, { archived: true })
+    await new Promise((r) => setTimeout(r, 3)) // avoid a same-millisecond updatedAt tie
     await db.addCapture({ aisleId: a.id, kind: 'photo', blob: blob(), mime: 'image/jpeg' })
     const names = (await db.listAisles()).map((x) => x.name)
     expect(names).toEqual(['A', 'B'])

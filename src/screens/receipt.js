@@ -9,6 +9,26 @@ import { shareFiles, copyText } from '../share.js'
 const isVideo = (c) => c.kind === 'video' || c.mime?.startsWith('video/')
 const LONG_PRESS_MS = 250
 
+// Turns the strip into files in order. Photos are cropped one at a time (iPhone canvas
+// memory is tight); if a crop fails, the original goes out instead of blocking Save.
+export async function packFiles(strip, crop) {
+  const files = []
+  for (const [i, c] of strip.entries()) {
+    if (isVideo(c)) {
+      files.push(new File([c.blob], mediaFilename(c, i), { type: c.mime || c.blob.type }))
+      continue
+    }
+    try {
+      const jpeg = await crop(c)
+      files.push(new File([jpeg], mediaFilename({ kind: c.kind, mime: 'image/jpeg' }, i), { type: 'image/jpeg' }))
+    } catch (err) {
+      console.warn('crop failed, using original', err)
+      files.push(new File([c.blob], mediaFilename(c, i), { type: c.mime || c.blob.type }))
+    }
+  }
+  return files
+}
+
 export async function renderReceipt(root, { aisleId }) {
   let aisle = await db.getAisle(aisleId)
   if (!aisle) return go('#/')
@@ -17,6 +37,8 @@ export async function renderReceipt(root, { aisleId }) {
   let strip = []
   // Photos are cropped ahead of time: iPhone only opens the share sheet straight from a tap.
   const crops = new Map() // capture id -> Promise<Blob>
+  let packed = null // { key, files } ready for the next Save tap
+  let saving = false
 
   const count = el('div', { class: 'center' })
   const stripEl = el('div', { class: 'strip' })
@@ -24,12 +46,16 @@ export async function renderReceipt(root, { aisleId }) {
   const hint = el('p', { class: 'hint' })
 
   function cropFor(capture) {
-    if (isVideo(capture)) return null
-    if (!crops.has(capture.id)) crops.set(capture.id, cropToJpeg(capture.blob))
+    if (!crops.has(capture.id)) {
+      const p = cropToJpeg(capture.blob)
+      p.catch(() => crops.delete(capture.id))
+      crops.set(capture.id, p)
+    }
     return crops.get(capture.id)
   }
 
   async function refreshReady() {
+    packed = null
     if (!strip.length) {
       saveBtn.disabled = true
       hint.textContent = '★ some shots in your basket first'
@@ -37,9 +63,11 @@ export async function renderReceipt(root, { aisleId }) {
     }
     saveBtn.disabled = true
     hint.textContent = 'Packing your photos…'
-    const pending = strip.map(cropFor).filter(Boolean)
-    await Promise.allSettled(pending)
-    saveBtn.disabled = false
+    const key = strip.map((c) => c.id).join()
+    const files = await packFiles(strip, cropFor)
+    if (key !== strip.map((c) => c.id).join()) return // strip changed meanwhile; a newer pack is running
+    packed = { key, files }
+    saveBtn.disabled = saving
     hint.textContent = ''
   }
 
@@ -77,7 +105,13 @@ export async function renderReceipt(root, { aisleId }) {
     let dragging = false
     let to = from
     slot.addEventListener('contextmenu', (e) => e.preventDefault())
+    // The strip scrolls normally; only once a long-press starts dragging do we stop the scroll.
+    slot.addEventListener('touchmove', (e) => { if (dragging) e.preventDefault() }, { passive: false })
+    let startX = 0
+    // Moving more than a few px before the long-press fires means "scroll", not "drag".
+    slot.addEventListener('pointermove', (e) => { if (!dragging && Math.abs(e.clientX - startX) > 8) clearTimeout(timer) })
     slot.addEventListener('pointerdown', (e) => {
+      startX = e.clientX
       try { slot.setPointerCapture?.(e.pointerId) } catch { /* synthetic or ended pointer */ }
       timer = setTimeout(() => {
         dragging = true
@@ -88,6 +122,9 @@ export async function renderReceipt(root, { aisleId }) {
     slot.addEventListener('pointermove', (e) => {
       if (!dragging) return
       e.preventDefault()
+      const edge = stripEl.getBoundingClientRect()
+      if (e.clientX < edge.left + 30) stripEl.scrollLeft -= 12
+      else if (e.clientX > edge.right - 30) stripEl.scrollLeft += 12
       const slots = [...stripEl.querySelectorAll('.slot')]
       const hit = slots.findIndex((s) => {
         const r = s.getBoundingClientRect()
@@ -148,23 +185,30 @@ export async function renderReceipt(root, { aisleId }) {
   // ---------- save ----------
 
   saveBtn.addEventListener('click', async () => {
-    // Start both inside the tap: iPhone requires a fresh tap for share and clipboard.
-    const copied = copyText(caption.value)
-    const files = await Promise.all(strip.map(async (c, i) => {
-      if (isVideo(c)) return new File([c.blob], mediaFilename(c, i), { type: c.mime || c.blob.type })
-      const jpeg = await cropFor(c)
-      return new File([jpeg], mediaFilename({ kind: c.kind, mime: 'image/jpeg' }, i), { type: 'image/jpeg' })
-    }))
-    clearTimeout(draftTimer)
-    db.saveDraft(aisleId, caption.value)
-    const result = await shareFiles(files)
-    const copyOk = await copied
-    if (copyOk && caption.value.trim()) toast('Caption copied, paste it in Instagram ✓')
-    else if (!caption.value.trim()) toast('Saved. Write a caption next time!', 'warn')
-    if (result === 'cancelled') return
-    if (!aisle.checkedOut && (await confirmSheet('Mark this aisle as checked out ✓?', { yes: 'Check out ✓', no: 'Not yet' }))) {
-      aisle = await db.updateAisle(aisleId, { checkedOut: true })
-      toast('✓ Checked out. Nice work!')
+    if (saving || !packed) return
+    saving = true
+    saveBtn.disabled = true
+    try {
+      // Share and copy start right inside the tap: iPhone requires a fresh tap for both.
+      const sharing = shareFiles(packed.files)
+      const copied = copyText(caption.value)
+      clearTimeout(draftTimer)
+      db.saveDraft(aisleId, caption.value)
+      const result = await sharing
+      const copyOk = await copied
+      if (copyOk && caption.value.trim()) toast('Caption copied, paste it in Instagram ✓')
+      else if (!caption.value.trim()) toast('Saved. Write a caption next time!', 'warn')
+      if (result === 'cancelled') return
+      if (!aisle.checkedOut && (await confirmSheet('Mark this aisle as checked out ✓?', { yes: 'Check out ✓', no: 'Not yet' }))) {
+        aisle = await db.updateAisle(aisleId, { checkedOut: true })
+        toast('✓ Checked out. Nice work!')
+      }
+    } catch (err) {
+      console.error(err)
+      toast(`Couldn't save: ${err.message || err}`, 'error')
+    } finally {
+      saving = false
+      saveBtn.disabled = !packed
     }
   })
 

@@ -1,6 +1,5 @@
 // Per-aisle backup: a zip with media/, voice/ and notes.txt.
 import * as db from './db.js'
-import { shareFiles } from './share.js'
 
 const pad = (n) => String(n).padStart(2, '0')
 
@@ -50,7 +49,8 @@ export function buildNotesTxt({ aisle, notes, caption }) {
   return lines.join('\n')
 }
 
-export async function exportAisle(aisleId) {
+// Builds the backup zip. Sharing happens separately, from a fresh tap (iPhone requirement).
+export async function buildBackup(aisleId) {
   const aisle = await db.getAisle(aisleId)
   const [captures, notes, caption] = await Promise.all([db.listCaptures(aisleId), db.listNotes(aisleId), db.getDraft(aisleId)])
   const zip = new window.JSZip()
@@ -60,6 +60,5 @@ export async function exportAisle(aisleId) {
   })
   zip.file('notes.txt', buildNotesTxt({ aisle, notes, caption }))
   const blob = await zip.generateAsync({ type: 'blob', compression: 'STORE' })
-  const file = new File([blob], `${slugify(aisle.name)}-${dateStamp(Date.now())}.zip`, { type: 'application/zip' })
-  return shareFiles([file])
+  return new File([blob], `${slugify(aisle.name)}-${dateStamp(Date.now())}.zip`, { type: 'application/zip' })
 }
