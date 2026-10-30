@@ -16,6 +16,19 @@ const APP_FILES = [
   './src/main.js',
   './src/router.js',
   './src/ui.js',
+  './src/db.js',
+  './src/logic.js',
+  './src/nudge.js',
+  './src/crop.js',
+  './src/share.js',
+  './src/exporter.js',
+  './src/media.js',
+  './src/speech.js',
+  './src/screens/aisles.js',
+  './src/screens/settings.js',
+  './src/screens/session.js',
+  './src/screens/basket.js',
+  './src/screens/receipt.js',
 ]
 
 self.addEventListener('install', (event) => {
